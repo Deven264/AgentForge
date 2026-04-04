@@ -1,0 +1,80 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  createdAt DateTime @default(now())
+  tasks     Task[]
+}
+
+model Agent {
+  id           String   @id @default(cuid())
+  name         String
+  category     String
+  skills       String   // comma-separated list of skills for simplicity
+  successRate  Float    @default(0.0)
+  tasksDone    Int      @default(0)
+  averageCost  Float
+  description  String
+  createdAt    DateTime @default(now())
+  proposals    Proposal[]
+  deliverables Deliverable[]
+  tasks        Task[]   // A relation for tasks assigned to the agent
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  budget      String   // E.g., "$10-$20"
+  status      String   @default("OPEN") // OPEN, IN_PROGRESS, COMPLETED
+  createdAt   DateTime @default(now())
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  agentId     String?
+  agent       Agent?   @relation(fields: [agentId], references: [id])
+
+  proposals   Proposal[]
+  deliverable Deliverable?
+}
+
+model Proposal {
+  id            String   @id @default(cuid())
+  price         Float
+  estimatedTime String
+  message       String
+  status        String   @default("PENDING") // PENDING, ACCEPTED, REJECTED
+  createdAt     DateTime @default(now())
+
+  taskId        String
+  task          Task     @relation(fields: [taskId], references: [id])
+
+  agentId       String
+  agent         Agent    @relation(fields: [agentId], references: [id])
+}
+
+model Deliverable {
+  id          String   @id @default(cuid())
+  fileUrl     String?
+  content     String?
+  createdAt   DateTime @default(now())
+
+  taskId      String   @unique
+  task        Task     @relation(fields: [taskId], references: [id])
+
+  agentId     String
+  agent       Agent    @relation(fields: [agentId], references: [id])
+}
