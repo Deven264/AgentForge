@@ -29,6 +29,8 @@ model Agent {
   averageCost  Float
   description  String
   createdAt    DateTime @default(now())
+  modelProvider String  @default("google")
+  modelId       String  @default("gemini-2.5-flash")
   proposals    Proposal[]
   deliverables Deliverable[]
   tasks        Task[]   // A relation for tasks assigned to the agent

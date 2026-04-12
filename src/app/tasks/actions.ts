@@ -1,6 +1,9 @@
 "use server"
 
 import { prisma } from "@/lib/prisma"
+import { getAgentModel } from "@/lib/ai-provider"
+import { generateObject } from "ai"
+import { z } from "zod"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
@@ -13,7 +16,6 @@ export async function createTask(formData: FormData) {
     throw new Error("Missing required fields")
   }
 
-  // Get the demo user (assuming there's only one user for the MVP)
   const user = await prisma.user.findFirst()
   if (!user) {
     throw new Error("No demo user found. Please run db seed again.")
@@ -29,37 +31,71 @@ export async function createTask(formData: FormData) {
     }
   })
 
-  // Trigger mock agent proposals asynchronously so it doesn't block
-  triggerMockProposals(task.id)
+  // Trigger real multi-model proposals asynchronously
+  triggerLLMProposals(task)
   
   revalidatePath("/tasks")
   redirect(`/tasks/${task.id}`)
 }
 
-async function triggerMockProposals(taskId: string) {
-  // Use a slight delay to simulate "thinking" and "discovery" time of agents
-  setTimeout(async () => {
-    try {
-      const agents = await prisma.agent.findMany();
-      // Have the first two or three agents submit proposals
-      for (let i = 0; i < Math.min(agents.length, 3); i++) {
-        const agent = agents[i];
-        // randomize price slightly around their average cost
-        const priceOffset = (Math.random() * 10) - 5;
-        const finalPrice = Math.max(1, agent.averageCost + priceOffset);
+async function triggerLLMProposals(task: any) {
+  try {
+    const agents = await prisma.agent.findMany();
+    // Pick 3 random agents
+    const selectedAgents = agents.sort(() => 0.5 - Math.random()).slice(0, 3);
+    
+    console.log(`\n🚀 === [AgentForge Tasks] New Task Triggered ===`);
+    console.log(`🤖 Selected Agents for Bidding: ${selectedAgents.map(a => a.name).join(", ")}`);
+    console.log(`=================================================`);
+    
+    for (const agent of selectedAgents) {
+      try {
+        console.log(`⏳ [${agent.name}] Generating proposal using ${agent.modelProvider.toUpperCase()} (${agent.modelId})...`);
+        // Dynamically instantiate the required AI model based on the agent's profile!
+        const model = getAgentModel(agent.modelProvider, agent.modelId);
+        
+        const prompt = `You are a specialized AI worker bidding on a freelance marketplace.
+Your persona:
+Name: ${agent.name}
+Category: ${agent.category}
+Skills: ${agent.skills}
+Description: ${agent.description}
+
+A user posted this task:
+Title: "${task.title}"
+Description: "${task.description}"
+Budget: ${task.budget}
+
+Write a proposal applying for this task. Pitch yourself strongly based strictly on your named persona and background! Keep it concise (3-4 sentences max).
+
+Make sure the price is a float loosely based around your average cost ($${agent.averageCost}). The estimated time should be realistic like '2 hours'.`;
+        
+        const { object } = await generateObject({
+          model,
+          schema: z.object({
+            price: z.number().describe("The numeric price bid for the task"),
+            estimatedTime: z.string().describe("Estimated time to complete like '4 hours'"),
+            message: z.string().describe("Your personalized pitch message")
+          }),
+          prompt,
+        });
         
         await prisma.proposal.create({
           data: {
-            taskId,
+            taskId: task.id,
             agentId: agent.id,
-            price: parseFloat(finalPrice.toFixed(2)),
-            estimatedTime: `${Math.floor(Math.random() * 4) + 1} hours`,
-            message: `Hello, I'm ${agent.name}. I read your task description and I'm ready to start immediately. My expertise in ${agent.category} is exactly what you need.`,
+            price: object.price || agent.averageCost,
+            estimatedTime: object.estimatedTime || "A few hours",
+            message: object.message || "I'd love to help you with this project."
           }
         });
+        
+        console.log(`✅ [${agent.name}] Successfully submitted proposal for $${object.price}`);
+      } catch (err: any) {
+        console.error(`Failed to generate multi-model proposal for agent ${agent.name} using ${agent.modelProvider}:`, err?.message);
       }
-    } catch (err) {
-      console.error("Failed to generate mock proposals", err);
     }
-  }, 2000);
+  } catch (err) {
+    console.error("Failed to fetch agents for proposals", err);
+  }
 }
