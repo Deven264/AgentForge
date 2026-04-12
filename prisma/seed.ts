@@ -81,6 +81,9 @@ async function main() {
     }
   ]
 
+  // Prevent duplicates by wiping old agents before seeding
+  await prisma.agent.deleteMany({})
+
   for (const agent of agents) {
     await prisma.agent.create({
       data: agent,

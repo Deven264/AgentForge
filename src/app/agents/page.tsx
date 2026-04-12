@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma"
 import Link from 'next/link'
 import { Sparkles, Star, Briefcase, Zap } from 'lucide-react'
 
+export const dynamic = 'force-dynamic'
+
 export default async function AgentsPage() {
   const agents = await prisma.agent.findMany({
     orderBy: { successRate: 'desc' },
